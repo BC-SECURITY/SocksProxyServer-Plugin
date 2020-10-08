@@ -3,7 +3,6 @@ from __future__ import print_function
 from lib.common.plugins import Plugin
 import lib.common.helpers as helpers
 import socket
-import sys
 import _thread
 import time
 import ssl
@@ -11,26 +10,17 @@ import queue
 import threading
 import os
 
-# this class MUST be named Plugin
 class Plugin(Plugin):
     description = "Launches a SocksProxy Server to run in the background of Empire"
 
     def onLoad(self):
-        """ any custom loading behavior - called by init, so any
-        behavior you'd normally put in __init__ goes here """
-        print("Custom loading behavior happens now.")
-
-
         self.commands = {'do_socksproxy': {'Description': 'Launch a Socks Proxy Server',
                                      'arg': 'the argument required and it''s description'
                                      }
                          }
 
     def execute(self, dict):
-        # This is for parsing commands through the api
-
         try:
-            # essentially switches to parse the proper command to execute
             if dict['command'] == 'do_socksproxy':
                 results = self.do_socksproxy(dict['arguments']['arg'])
             return results
@@ -55,7 +45,7 @@ class SocksProxy(object):
         cert = "%s/empire-chain.pem" % (cert_path)
         private_key = "%s/empire-priv.key" % (cert_path)
         if not (os.path.isfile(cert) and os.path.isfile(private_key)):
-            print(helpers.color("[!] Unable to find certpath %s, using default." % cert_path))
+            print(helpers.color("[!] Unable to find default certificate."))
 
         handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
         if handler_port == "":
@@ -81,7 +71,7 @@ class SocksProxy(object):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(('', int(handler_port)))
             dock_socket.listen(5)
-            print("Handler listening on: " + handler_port)
+            print(helpers.color("\n[+] Handler listening on: " + handler_port))
             while True:
                 try:
                     clear_socket, address = dock_socket.accept()
@@ -124,7 +114,7 @@ class SocksProxy(object):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(('127.0.0.1', int(proxy_port)))
             dock_socket2.listen(5)
-            print("Socks Server listening on: " + proxy_port)
+            print(helpers.color("\n[+] Socks Server listening on: " + proxy_port))
             while True:
                 try:
                     client_socket2, address = dock_socket2.accept()
@@ -158,4 +148,3 @@ class SocksProxy(object):
             except:
                 pass
             pass
-
