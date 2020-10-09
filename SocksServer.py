@@ -10,14 +10,16 @@ import queue
 import os
 import multiprocessing
 
+
 class Plugin(Plugin):
     description = "Launches a SocksProxy Server to run in the background of Empire"
 
     def onLoad(self):
         self.commands = {'do_socksproxy': {'Description': 'Launch a Socks Proxy Server',
-                                     'arg': 'the argument required and it''s description'
-                                     }
+                                           'arg': 'the argument required and it''s description'
+                                           }
                          }
+        self.proxy = SocksProxy()
 
     def execute(self, dict):
         try:
@@ -37,35 +39,33 @@ class Plugin(Plugin):
 
     def do_socksproxy(self, line):
         "Launches a SocksProxy Server to run in the background of Empire"
+
         parts = line.split(' ')
         if parts[0].lower() == "kill":
-            if SocksProxy in self.mainMenu.processes:
-                proxy = self.mainMenu.processes['SocksProxy']
-                proxy.end()
-        elif 'SocksProxy' not in self.mainMenu.processes:
-            self.mainMenu.processes['SocksProxy'] = SocksProxy()
+            print(self.proxy.running)
+            if self.proxy.running:
+                self.proxy.end()
+        elif not self.proxy.running:
+
+            self.proxy.start()
         else:
             print(helpers.color("[!] SocksProxy Already Running!"))
 
 
 class SocksProxy(object):
     def __init__(self):
-        cert_path = os.path.abspath("./data/")
-        cert = "%s/empire-chain.pem" % (cert_path)
-        private_key = "%s/empire-priv.key" % (cert_path)
-        if not (os.path.isfile(cert) and os.path.isfile(private_key)):
+        self.cert_path = os.path.abspath("./data/")
+        self.cert = "%s/empire-chain.pem" % (self.cert_path)
+        self.private_key = "%s/empire-priv.key" % (self.cert_path)
+        if not (os.path.isfile(self.cert) and os.path.isfile(self.private_key)):
             print(helpers.color("[!] Unable to find default certificate."))
 
-        handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
-        if handler_port == "":
-            handler_port = "443"
-        proxy_port = input(helpers.color("[>] Enter Proxy Port [1080]: "))
-        if proxy_port == "":
-            proxy_port = "1080"
-
-        self.process = multiprocessing.Process(target=self.main, args=(handler_port, proxy_port, cert, private_key))
+        self.handler_port = "443"
+        self.proxy_port = "1080"
+        self.running = False
+        self.process = multiprocessing.Process(target=self.main,
+                                               args=(self.handler_port, self.proxy_port, self.cert, self.private_key))
         self.process.daemon = True
-        self.process.start()
 
     def main(self, handler_port, proxy_port, certificate, private_key):
         _thread.start_new_thread(self.server, (handler_port, proxy_port, certificate, private_key))
@@ -157,5 +157,22 @@ class SocksProxy(object):
             except:
                 pass
             pass
+
+    def start(self):
+        print("Starting Socks Proxy")
+        handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
+        if handler_port == "":
+            self.handler_port = "443"
+        proxy_port = input(helpers.color("[>] Enter Proxy Port [1080]: "))
+        if proxy_port == "":
+            self.proxy_port = "1080"
+        self.process = multiprocessing.Process(target=self.main,
+                                               args=(self.handler_port, self.proxy_port, self.cert, self.private_key))
+        self.running = True
+        self.process.start()
+
     def end(self):
+        print("killing process")
+        self.running = False
         self.process.terminate()
+
