@@ -40,11 +40,11 @@ class Plugin(Plugin):
         "Launches a SocksProxy Server to run in the background of Empire"
         parts = line.split(' ')
         if parts[0].lower() == "kill":
-            if SocksProxy in mainMenu.processes:
-                proxy = mainMenu.processes['SocksProxy']
+            if SocksProxy in self.mainMenu.processes:
+                proxy = self.mainMenu.processes['SocksProxy']
                 proxy.end()
-        elif 'SocksProxy' not in mainMenu.processes:
-            mainMenu.processes['SocksProxy'] = SocksProxy()
+        elif 'SocksProxy' not in self.mainMenu.processes:
+            self.mainMenu.processes['SocksProxy'] = SocksProxy()
         else:
             print(helpers.color("[!] SocksProxy Already Running!"))
 
