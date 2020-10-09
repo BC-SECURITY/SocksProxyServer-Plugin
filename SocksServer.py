@@ -7,7 +7,6 @@ import _thread
 import time
 import ssl
 import queue
-import threading
 import os
 import multiprocessing
 
