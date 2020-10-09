@@ -9,6 +9,7 @@ import ssl
 import queue
 import threading
 import os
+import multiprocessing
 
 class Plugin(Plugin):
     description = "Launches a SocksProxy Server to run in the background of Empire"
@@ -35,9 +36,18 @@ class Plugin(Plugin):
         registering functions to be run by user commands """
         mainMenu.__class__.do_socksproxy = self.do_socksproxy
 
-    def do_socksproxy(self, args):
+    def do_socksproxy(self, line):
         "Launches a SocksProxy Server to run in the background of Empire"
-        SocksProxy()
+        parts = line.split(' ')
+        if parts[0].lower() == "kill":
+            if SocksProxy in mainMenu.processes:
+                proxy = mainMenu.processes['SocksProxy']
+                proxy.end()
+        elif 'SocksProxy' not in mainMenu.processes:
+            mainMenu.processes['SocksProxy'] = SocksProxy()
+        else:
+            print(helpers.color("[!] SocksProxy Already Running!"))
+
 
 class SocksProxy(object):
     def __init__(self):
@@ -54,9 +64,9 @@ class SocksProxy(object):
         if proxy_port == "":
             proxy_port = "1080"
 
-        thread = threading.Thread(target=self.main, args=(handler_port, proxy_port, cert, private_key))
-        thread.daemon = True
-        thread.start()
+        self.process = multiprocessing.Process(target=self.main, args=(handler_port, proxy_port, cert, private_key))
+        self.process.daemon = True
+        self.process.start()
 
     def main(self, handler_port, proxy_port, certificate, private_key):
         _thread.start_new_thread(self.server, (handler_port, proxy_port, certificate, private_key))
@@ -148,3 +158,5 @@ class SocksProxy(object):
             except:
                 pass
             pass
+    def end(self):
+        self.process.terminate()
