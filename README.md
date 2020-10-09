@@ -2,6 +2,8 @@
 The SocksProxy Plugin runs a SocksProxy server for [Invoke-SocksProxy](https://github.com/BC-SECURITY/Invoke-SocksProxy)
 entirely contained in [Empire](https://github.com/BC-SECURITY/Empire/). 
 
+![image](https://user-images.githubusercontent.com/20302208/95637897-d8221480-0a47-11eb-8a69-3f132fe5d079.png)
+
 ## Getting Started
 * To run the plugin, you can download it fom the releases [Releases](https://github.com/BC-SECURITY/Invoke-SocksProxy/releases) page. 
 

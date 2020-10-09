@@ -15,7 +15,7 @@ class Plugin(Plugin):
     description = "Launches a SocksProxy Server to run in the background of Empire"
 
     def onLoad(self):
-        self.commands = {'do_socksproxy': {'Description': 'Launch a Socks Proxy Server',
+        self.commands = {'do_socksproxyserver': {'Description': 'Launch a Socks Proxy Server',
                                            'arg': 'the argument required and it''s description'
                                            }
                          }
@@ -23,8 +23,8 @@ class Plugin(Plugin):
 
     def execute(self, dict):
         try:
-            if dict['command'] == 'do_socksproxy':
-                results = self.do_socksproxy(dict['arguments']['arg'])
+            if dict['command'] == 'do_socksproxyserver':
+                results = self.do_socksproxyserver(dict['arguments']['arg'])
             return results
         except:
             return False
@@ -35,9 +35,9 @@ class Plugin(Plugin):
     def register(self, mainMenu):
         """ any modifications to the mainMenu go here - e.g.
         registering functions to be run by user commands """
-        mainMenu.__class__.do_socksproxy = self.do_socksproxy
+        mainMenu.__class__.do_socksproxyserver = self.do_socksproxyserver
 
-    def do_socksproxy(self, line):
+    def do_socksproxyserver(self, line):
         "Launches a SocksProxy Server to run in the background of Empire"
 
         parts = line.split(' ')
@@ -46,10 +46,9 @@ class Plugin(Plugin):
             if self.proxy.running:
                 self.proxy.end()
         elif not self.proxy.running:
-
             self.proxy.start()
         else:
-            print(helpers.color("[!] SocksProxy Already Running!"))
+            print(helpers.color("[!] SocksProxy Server Already Running!"))
 
 
 class SocksProxy(object):
@@ -80,7 +79,7 @@ class SocksProxy(object):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(('', int(handler_port)))
             dock_socket.listen(5)
-            print(helpers.color("\n[+] Handler listening on: " + handler_port))
+            print(helpers.color("\r[+] Handler listening on: " + handler_port))
             while True:
                 try:
                     clear_socket, address = dock_socket.accept()
@@ -159,7 +158,7 @@ class SocksProxy(object):
             pass
 
     def start(self):
-        print("Starting Socks Proxy")
+        print(helpers.color("[*] Starting Socks Proxy"))
         handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
         if handler_port == "":
             self.handler_port = "443"
