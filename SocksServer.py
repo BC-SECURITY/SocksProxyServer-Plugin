@@ -51,6 +51,10 @@ class Plugin(Plugin):
         else:
             print(helpers.color("[!] SocksProxy Already Running!"))
 
+    def shutdown(self):
+        """if the plugin spawns a process provide a shutdown method for when Empire exits else leave it as pass"""
+        if self.proxy.running:
+            self.proxy.end()
 
 class SocksProxy(object):
     def __init__(self):
@@ -63,9 +67,8 @@ class SocksProxy(object):
         self.handler_port = "443"
         self.proxy_port = "1080"
         self.running = False
-        self.process = multiprocessing.Process(target=self.main,
-                                               args=(self.handler_port, self.proxy_port, self.cert, self.private_key))
-        self.process.daemon = True
+        self.process = None
+
 
     def main(self, handler_port, proxy_port, certificate, private_key):
         _thread.start_new_thread(self.server, (handler_port, proxy_port, certificate, private_key))
@@ -169,10 +172,11 @@ class SocksProxy(object):
         self.process = multiprocessing.Process(target=self.main,
                                                args=(self.handler_port, self.proxy_port, self.cert, self.private_key))
         self.running = True
+        self.process.daemon = True
         self.process.start()
 
     def end(self):
-        print("killing process")
+        print(helpers.color("[!] Killing Socks Server"))
         self.running = False
         self.process.terminate()
 
