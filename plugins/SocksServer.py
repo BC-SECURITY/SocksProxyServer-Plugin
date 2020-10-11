@@ -12,7 +12,7 @@ import multiprocessing
 
 
 class Plugin(Plugin):
-    description = "Launches a SocksProxy Server to run in the background of Empire"
+    description = "Launches a Socks Proxy Server to run in the background of Empire"
 
     def onLoad(self):
         self.commands = {'do_socksproxyserver': {'Description': 'Launch a Socks Proxy Server',
@@ -39,16 +39,14 @@ class Plugin(Plugin):
 
     def do_socksproxyserver(self, line):
         "Launches a SocksProxy Server to run in the background of Empire"
-
         parts = line.split(' ')
         if parts[0].lower() == "kill":
-            print(self.proxy.running)
             if self.proxy.running:
                 self.proxy.end()
         elif not self.proxy.running:
             self.proxy.start()
         else:
-            print(helpers.color("[!] SocksProxy Server Already Running!"))
+            print(helpers.color("[!] Socks Proxy Server Already Running!"))
 
     def shutdown(self):
         """if the plugin spawns a process provide a shutdown method for when Empire exits else leave it as pass"""
@@ -125,7 +123,7 @@ class SocksProxy(object):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(('127.0.0.1', int(proxy_port)))
             dock_socket2.listen(5)
-            print(helpers.color("\n[+] Socks Server listening on: " + proxy_port))
+            print(helpers.color("\n[+] Socks Proxy Server listening on: " + proxy_port))
             while True:
                 try:
                     client_socket2, address = dock_socket2.accept()
@@ -161,7 +159,7 @@ class SocksProxy(object):
             pass
 
     def start(self):
-        print(helpers.color("[*] Starting Socks Proxy"))
+        print(helpers.color("[*] Starting Socks Proxy Server"))
         handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
         if handler_port == "":
             self.handler_port = "443"
@@ -175,7 +173,6 @@ class SocksProxy(object):
         self.process.start()
 
     def end(self):
-        print(helpers.color("[!] Killing Socks Server"))
+        print(helpers.color("[!] Killing Socks Proxy Server"))
         self.running = False
         self.process.terminate()
-

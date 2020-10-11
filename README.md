@@ -1,6 +1,8 @@
 # SocksProxyServer-Plugin
-The SocksProxy Plugin runs a SocksProxy server for [Invoke-SocksProxy](https://github.com/BC-SECURITY/Invoke-SocksProxy)
-entirely contained in [Empire](https://github.com/BC-SECURITY/Empire/). 
+The Socks Proxy Plugin runs a Socks Proxy Server for [Invoke-SocksProxy](https://github.com/BC-SECURITY/Invoke-SocksProxy)
+that supports Socks 4 and 5 protocols. This plugin is entirely contained in [Empire](https://github.com/BC-SECURITY/Empire/)
+and runs in the background. Use command `socksproxyserver` to configure and start the Socks Proxy Server. You can shutdown
+the socks proxy by running the command `socksproxyserver kill` or by exiting Empire.
 
 ![image](https://user-images.githubusercontent.com/20302208/95637897-d8221480-0a47-11eb-8a69-3f132fe5d079.png)
 
@@ -16,9 +18,10 @@ Prerequisites:
 ![image](https://user-images.githubusercontent.com/20302208/95636534-49f85f00-0a44-11eb-87c1-754a2368febb.png)
 
 
-2. Plugins are automatically loaded into Empire as of 3.4.0, otherwise run ```plugin attack```
+2. Plugins are automatically loaded into Empire as of 3.4.0, otherwise run ```plugin SocksServer```
 
 ![image](https://user-images.githubusercontent.com/20302208/95636737-b5dac780-0a44-11eb-9f82-34dcb66c24fe.png)
 
 ## Future Features
-- List of active servers (similar to agents and listeners)
+- Add multiple socks server support (similar to agents and listeners)
+- Add UDP and bind request support
