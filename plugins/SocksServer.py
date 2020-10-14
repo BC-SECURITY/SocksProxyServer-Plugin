@@ -2,29 +2,24 @@ from __future__ import print_function
 
 from lib.common.plugins import Plugin
 import lib.common.helpers as helpers
-
 import socket
 import _thread
+import time
 import ssl
 import queue
+import os
+import multiprocessing
 
 
 class Plugin(Plugin):
     description = "Launches a Socks Proxy Server to run in the background of Empire"
 
     def onLoad(self):
-        """ any custom loading behavior - called by init, so any
-        behavior you'd normally put in __init__ goes here """
-
-        self.commands = {'do_socksproxyserver': {'Description': 'Manages socks proxy server',
-                                                 'arg': '<start|stop> [handler port] [proxy port] [certificate] [private key]'
-                                                 }
+        self.commands = {'do_socksproxyserver': {'Description': 'Launch a Socks Proxy Server',
+                                           'arg': 'the argument required and it''s description'
+                                           }
                          }
-        self.handler_port = '443'
-        self.proxy_port = '1080'
-        self.certificate = './data/empire-chain.pem'
-        self.privateKey = './data/empire-priv.key'
-        self.running = False
+        self.proxy = SocksProxy()
 
     def execute(self, dict):
         try:
@@ -42,43 +37,40 @@ class Plugin(Plugin):
         registering functions to be run by user commands """
         mainMenu.__class__.do_socksproxyserver = self.do_socksproxyserver
 
-    def do_socksproxyserver(self, args):
+    def do_socksproxyserver(self, line):
         "Launches a SocksProxy Server to run in the background of Empire"
-        args = args.split(" ")
-        if args[0] == "start":
-            self.start_socks_server(args)
-        elif args[0] == "stop":
-            self.stop_socks_server()
-        else:
-            print(helpers.color("[!] socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]"))
-
-    def start_socks_server(self, args):
-        if not self.running:
-            self.running = True
-            if len(args) > 4:
-                self.certificate = args[3]
-                self.privateKey = args[4]
-            if len(args) > 2:
-                self.handler_port = args[1]
-                self.proxy_port = args[2]
-            _thread.start_new_thread(self.server,
-                                     (self.handler_port, self.proxy_port, self.certificate, self.privateKey))
+        parts = line.split(' ')
+        if parts[0].lower() == "kill":
+            if self.proxy.running:
+                self.proxy.end()
+        elif not self.proxy.running:
+            self.proxy.start()
         else:
             print(helpers.color("[!] Socks Proxy Server Already Running!"))
 
-    def stop_socks_server(self):
-        if self.running:
-            self.running = False
-            print(helpers.color("[*] Stopping socks proxy server...", "blue"))
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.handler_port)))
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.proxy_port)))
-        else:
-            print(helpers.color("[!] Server is not running!", "red"))
-
     def shutdown(self):
         """if the plugin spawns a process provide a shutdown method for when Empire exits else leave it as pass"""
-        if self.running:
-            self.stop_socks_server()
+        if self.proxy.running:
+            self.proxy.end()
+
+class SocksProxy(object):
+    def __init__(self):
+        self.cert_path = os.path.abspath("./data/")
+        self.cert = "%s/empire-chain.pem" % (self.cert_path)
+        self.private_key = "%s/empire-priv.key" % (self.cert_path)
+        if not (os.path.isfile(self.cert) and os.path.isfile(self.private_key)):
+            print(helpers.color("[!] Unable to find default certificate."))
+
+        self.handler_port = "443"
+        self.proxy_port = "1080"
+        self.running = False
+        self.process = None
+
+
+    def main(self, handler_port, proxy_port, certificate, private_key):
+        _thread.start_new_thread(self.server, (handler_port, proxy_port, certificate, private_key))
+        while True:
+            time.sleep(60)
 
     def handlerServer(self, q, handler_port, certificate, private_key):
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
@@ -88,10 +80,8 @@ class Plugin(Plugin):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(('', int(handler_port)))
             dock_socket.listen(5)
-            print(helpers.color("[*] Handler listening on: " + handler_port))
-            print(helpers.color("[*] Using certificate: " + certificate))
-            print(helpers.color("[*] Using private key: " + private_key))
-            while self.running:
+            print(helpers.color("\r[+] Handler listening on: " + handler_port))
+            while True:
                 try:
                     clear_socket, address = dock_socket.accept()
                     client_socket = context.wrap_socket(clear_socket, server_side=True)
@@ -107,9 +97,10 @@ class Plugin(Plugin):
                         pass
                     q.put(client_socket)
                 except Exception as e:
+                    print(e)
                     pass
         except Exception as e:
-            pass
+            print(e)
         finally:
             dock_socket.close()
 
@@ -132,8 +123,8 @@ class Plugin(Plugin):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(('127.0.0.1', int(proxy_port)))
             dock_socket2.listen(5)
-            print(helpers.color("\n[*] Socks Server listening on: " + proxy_port))
-            while self.running:
+            print(helpers.color("\n[+] Socks Proxy Server listening on: " + proxy_port))
+            while True:
                 try:
                     client_socket2, address = dock_socket2.accept()
                     client_socket = self.getActiveConnection(q)
@@ -142,12 +133,12 @@ class Plugin(Plugin):
                     _thread.start_new_thread(self.forward, (client_socket, client_socket2))
                     _thread.start_new_thread(self.forward, (client_socket2, client_socket))
                 except Exception as e:
-                    print(helpers.color("[!] " + str(e)))
+                    print(e)
+                    pass
         except Exception as e:
-            print(helpers.color("[!] " + str(e)))
+            print(e)
         finally:
             dock_socket2.close()
-            print(helpers.color("\n[+] Socks proxy server stopped"))
 
     def forward(self, source, destination):
         try:
@@ -166,3 +157,22 @@ class Plugin(Plugin):
             except:
                 pass
             pass
+
+    def start(self):
+        print(helpers.color("[*] Starting Socks Proxy Server"))
+        handler_port = input(helpers.color("[>] Enter Handler Port [443]: "))
+        if handler_port == "":
+            self.handler_port = "443"
+        proxy_port = input(helpers.color("[>] Enter Proxy Port [1080]: "))
+        if proxy_port == "":
+            self.proxy_port = "1080"
+        self.process = multiprocessing.Process(target=self.main,
+                                               args=(self.handler_port, self.proxy_port, self.cert, self.private_key))
+        self.running = True
+        self.process.daemon = True
+        self.process.start()
+
+    def end(self):
+        print(helpers.color("[!] Killing Socks Proxy Server"))
+        self.running = False
+        self.process.terminate()
