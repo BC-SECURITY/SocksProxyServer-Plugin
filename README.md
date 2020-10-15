@@ -29,3 +29,6 @@ Prerequisites:
 ## Future Features
 - Add multiple socks server support (similar to agents and listeners)
 - Add UDP and bind request support
+
+## Contributions
+Updates made from @mjokic plugin [code](https://github.com/BC-SECURITY/Empire/pull/351)
