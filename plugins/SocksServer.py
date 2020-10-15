@@ -16,7 +16,6 @@ class Plugin(Plugin):
     def onLoad(self):
         """ any custom loading behavior - called by init, so any
         behavior you'd normally put in __init__ goes here """
-
         self.commands = {'do_socksproxyserver': {'Description': 'Manages socks proxy server',
                                                  'arg': '<start|stop> [handler port] [proxy port] [certificate] [private key]'
                                                  }
