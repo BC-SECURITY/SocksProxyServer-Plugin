@@ -3,7 +3,7 @@ The Socks Proxy Plugin runs a Socks Proxy Server for [Invoke-SocksProxy](https:/
 that supports Socks 4 and 5 protocols. This plugin is entirely contained in [Empire](https://github.com/BC-SECURITY/Empire/)
 and runs in the background. 
 
-`<start|stop> [handler port] [proxy port] [certificate] [private key]`
+`socksproxyserver <start|stop> [handler port] [proxy port] [certificate] [private key]`
 
 Use command `socksproxyserver start` to configure and start the Socks Proxy Server. You can shutdown
 the socks proxy by running the command `socksproxyserver stop` or by exiting Empire.
