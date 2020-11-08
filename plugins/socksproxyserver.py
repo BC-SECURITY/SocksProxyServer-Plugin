@@ -16,13 +16,48 @@ class Plugin(Plugin):
     def onLoad(self):
         """ any custom loading behavior - called by init, so any
         behavior you'd normally put in __init__ goes here """
-        self.commands = {'do_socksproxyserver': {'Description': 'Manages socks proxy server',
-                                                 'arg': '<start|stop> [handler port] [proxy port] [certificate] [private key]'
-                                                 }
-                         }
-        # load default ports
-        self.handler_port = '443'
-        self.proxy_port = '1080'
+        self.info = {
+                        'Name': 'socksproxyserver',
+
+                        'Author': ['@kevin'],
+
+                        'Description': ('Launches a Socks Proxy Server to run in the background of Empire.'),
+
+                        'Software': '',
+
+                        'Techniques': [''],
+
+                        'Comments': []
+                    },
+
+        self.options = {
+                    'status': {
+                        'Description': 'Start/stop the Chisel server. Specify a port or default to 8080.',
+                        'Required': True,
+                        'Value': 'start'
+                    },
+                    'handlerport': {
+                        'Description': 'Port number.',
+                        'Required': True,
+                        'Value': '443'
+                    },
+                    'proxyport': {
+                        'Description': 'Port number.',
+                        'Required': True,
+                        'Value': '1080'
+                    },
+                    'certificate': {
+                        'Description': 'Port number.',
+                        'Required': False,
+                        'Value': ''
+                    },
+                    'privatekey': {
+                        'Description': 'Port number.',
+                        'Required': False,
+                        'Value': ''
+                    },
+        }
+
 
         # load default empire certs
         self.cert_path = os.path.abspath("./data/")
@@ -31,10 +66,16 @@ class Plugin(Plugin):
 
         self.running = False
 
-    def execute(self, command_list):
+    def execute(self, command):
+        # This is for parsing commands through the api
         try:
-            if command_list['command'] == 'do_socksproxyserver':
-                results = self.do_socksproxyserver(command_list['arguments']['arg'])
+            # essentially switches to parse the proper command to execute
+            self.options['status']['Value'] = command['status']
+            self.options['handlerport']['Value'] = command['handlerport']
+            self.options['proxyport']['Value'] = command['proxyport']
+            self.options['certificate']['Value'] = command['certificate']
+            self.options['privatekey']['Value'] = command['privatekey']
+            results = self.do_socksproxyserver('')
             return results
         except:
             return False
@@ -49,23 +90,63 @@ class Plugin(Plugin):
 
     def do_socksproxyserver(self, args):
         "Launches a SocksProxy Server to run in the background of Empire"
-        args = args.split(" ")
-        if args[0].lower() == "start":
-            self.start_socks_server(args)
-        elif args[0].lower() == "stop":
-            self.shutdown()
-        else:
-            print(helpers.color("[!] socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]"))
 
-    def start_socks_server(self, args):
-        if not self.running:
-            self.running = True
-            if len(args) > 4:
-                self.certificate = args[3]
-                self.private_key = args[4]
+        if not args:
+            # Load defaults for server
+            self.status = self.options['status']['Value']
+            self.handler_port = self.options['handlerport']['Value']
+            self.proxy_port = self.options['proxyport']['Value']
+
+            if not self.options['certificate']['Value'] or self.options['privatekey']['Value']:
+                # load default empire certs
+                self.cert_path = os.path.abspath("./data/")
+                self.certificate = "%s/empire-chain.pem" % self.cert_path
+                self.private_key = "%s/empire-priv.key" % self.cert_path
+
+            print(helpers.color(
+                "[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]"))
+            print(helpers.color(
+                "[+] Defaults: socksserver " + self.status + " " + self.handler_port + " " + self.proxy_port + " " +
+                self.certificate + " " + self.private_key))
+
+        else:
+            args = args.split(" ")
+
+            # Check server status
+            if args[0].lower() == "start":
+                self.status = 'start'
+            elif args[0].lower() == "stop":
+                self.status = 'stop'
+            # Check for port numbers
             if len(args) > 2:
                 self.handler_port = args[1]
                 self.proxy_port = args[2]
+            else:
+                self.handler_port = self.options['handlerport']['Value']
+                self.proxy_port = self.options['proxyport']['Value']
+
+            # Check for certificates
+            if len(args) > 4:
+                self.certificate = args[3]
+                self.private_key = args[4]
+            else:
+                # load default empire certs
+                self.cert_path = os.path.abspath("./data/")
+                self.certificate = "%s/empire-chain.pem" % self.cert_path
+                self.private_key = "%s/empire-priv.key" % self.cert_path
+
+        # Switch for starting and stopping server
+        if self.status == "start":
+            self.start_socks_server()
+        elif self.status == "stop":
+            self.shutdown()
+        else:
+            print(helpers.color("[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] ["
+                                "private key]"))
+
+    def start_socks_server(self):
+        if not self.running:
+            self.running = True
             _thread.start_new_thread(self.server,
                                      (self.handler_port, self.proxy_port, self.certificate, self.private_key))
         else:

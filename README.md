@@ -5,10 +5,7 @@ and runs in the background.
 
 `socksproxyserver <start|stop> [handler port] [proxy port] [certificate] [private key]`
 
-Use command `socksproxyserver start` to configure and start the Socks Proxy Server. You can shutdown
-the socks proxy by running the command `socksproxyserver stop` or by exiting Empire.
-
-![image](https://user-images.githubusercontent.com/20302208/96073581-92a48380-0e5b-11eb-8a14-e5fff1c55e48.png)
+![image](https://user-images.githubusercontent.com/20302208/95637897-d8221480-0a47-11eb-8a69-3f132fe5d079.png)
 
 ## Getting Started
 * To run the plugin, you can download it fom the releases [Releases](https://github.com/BC-SECURITY/Invoke-SocksProxy/releases) page. 
