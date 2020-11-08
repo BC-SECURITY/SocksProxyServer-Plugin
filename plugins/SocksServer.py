@@ -71,8 +71,11 @@ class Plugin(Plugin):
         try:
             # essentially switches to parse the proper command to execute
             self.options['status']['Value'] = command['status']
-            self.options['port']['Value'] = command['port']
-            results = self.do_chiselserver('')
+            self.options['handlerport']['Value'] = command['handlerport']
+            self.options['proxyport']['Value'] = command['proxyport']
+            self.options['certificate']['Value'] = command['certificate']
+            self.options['privatekey']['Value'] = command['privatekey']
+            results = self.do_socksproxyserver('')
             return results
         except:
             return False
@@ -94,10 +97,11 @@ class Plugin(Plugin):
             self.handler_port = self.options['handlerport']['Value']
             self.proxy_port = self.options['proxyport']['Value']
 
-            # load default empire certs
-            self.cert_path = os.path.abspath("./data/")
-            self.certificate = "%s/empire-chain.pem" % self.cert_path
-            self.private_key = "%s/empire-priv.key" % self.cert_path
+            if not self.options['certificate']['Value'] or self.options['privatekey']['Value']:
+                # load default empire certs
+                self.cert_path = os.path.abspath("./data/")
+                self.certificate = "%s/empire-chain.pem" % self.cert_path
+                self.private_key = "%s/empire-priv.key" % self.cert_path
 
             print(helpers.color(
                 "[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]"))
@@ -113,8 +117,6 @@ class Plugin(Plugin):
                 self.status = 'start'
             elif args[0].lower() == "stop":
                 self.status = 'stop'
-                self.shutdown()
-                return
             # Check for port numbers
             if len(args) > 2:
                 self.handler_port = args[1]
@@ -133,7 +135,14 @@ class Plugin(Plugin):
                 self.certificate = "%s/empire-chain.pem" % self.cert_path
                 self.private_key = "%s/empire-priv.key" % self.cert_path
 
-        self.start_socks_server()
+        # Switch for starting and stopping server
+        if self.status == "start":
+            self.start_socks_server()
+        elif self.status == "stop":
+            self.shutdown()
+        else:
+            print(helpers.color("[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] ["
+                                "private key]"))
 
     def start_socks_server(self):
         if not self.running:
