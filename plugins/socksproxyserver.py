@@ -47,12 +47,12 @@ class Plugin(Plugin):
                         'Value': '1080'
                     },
                     'certificate': {
-                        'Description': 'Port number.',
+                        'Description': 'Certifcate directory [Default: Empire self-signed cert].',
                         'Required': False,
                         'Value': ''
                     },
                     'privatekey': {
-                        'Description': 'Port number.',
+                        'Description': 'Private key directory [Default: Empire private key]',
                         'Required': False,
                         'Value': ''
                     },
