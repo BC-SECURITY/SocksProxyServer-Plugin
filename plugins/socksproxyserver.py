@@ -19,7 +19,7 @@ class Plugin(Plugin):
         self.info = {
                         'Name': 'socksproxyserver',
 
-                        'Author': ['@kevin'],
+                        'Author': ['@Cx01N', '@mjokic'],
 
                         'Description': ('Launches a Socks Proxy Server to run in the background of Empire.'),
 
