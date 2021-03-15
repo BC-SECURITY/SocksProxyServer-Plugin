@@ -1,7 +1,12 @@
 from __future__ import print_function
+import importlib
 
-from empire.server.common.plugins import Plugin
-import empire.server.common.helpers as helpers
+if importlib.util.find_spec("empire") is not None:
+    from empire.server.common.plugins import Plugin
+    import empire.server.common.helpers as helpers    
+else:
+    from lib.common.plugins import Plugin
+    import lib.common.helpers as helpers    
 
 import socket
 import _thread
