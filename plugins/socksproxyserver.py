@@ -1,7 +1,7 @@
 from __future__ import print_function
 
-from lib.common.plugins import Plugin
-import lib.common.helpers as helpers
+from empire.server.common.plugins import Plugin
+import empire.server.common.helpers as helpers
 
 import socket
 import _thread
