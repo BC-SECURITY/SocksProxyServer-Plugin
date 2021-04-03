@@ -1,12 +1,7 @@
 from __future__ import print_function
-import importlib
 
-if importlib.util.find_spec("empire") is not None:
-    from empire.server.common.plugins import Plugin
-    import empire.server.common.helpers as helpers    
-else:
-    from lib.common.plugins import Plugin
-    import lib.common.helpers as helpers    
+from empire.server.common.plugins import Plugin
+from empire.server.common.empire import MainMenu
 
 import socket
 import _thread
@@ -65,7 +60,7 @@ class Plugin(Plugin):
 
 
         # load default empire certs
-        self.cert_path = os.path.abspath("./data/")
+        self.cert_path = os.path.abspath("./empire/server/data/")
         self.certificate = "%s/empire-chain.pem" % self.cert_path
         self.private_key = "%s/empire-priv.key" % self.cert_path
 
@@ -89,7 +84,7 @@ class Plugin(Plugin):
         return self.commands
 
     def register(self, main_menu):
-        """ any modifications to the mainMenu go here - e.g.
+        """ any modifications to the main_menu go here - e.g.
         registering functions to be run by user commands """
         main_menu.__class__.do_socksproxyserver = self.do_socksproxyserver
 
@@ -104,15 +99,9 @@ class Plugin(Plugin):
 
             if not self.options['certificate']['Value'] or self.options['privatekey']['Value']:
                 # load default empire certs
-                self.cert_path = os.path.abspath("./data/")
+                self.cert_path = os.path.abspath("./empire/server/data/")
                 self.certificate = "%s/empire-chain.pem" % self.cert_path
                 self.private_key = "%s/empire-priv.key" % self.cert_path
-
-            print(helpers.color(
-                "[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]"))
-            print(helpers.color(
-                "[+] Defaults: socksserver " + self.status + " " + self.handler_port + " " + self.proxy_port + " " +
-                self.certificate + " " + self.private_key))
 
         else:
             args = args.split(" ")
@@ -136,7 +125,7 @@ class Plugin(Plugin):
                 self.private_key = args[4]
             else:
                 # load default empire certs
-                self.cert_path = os.path.abspath("./data/")
+                self.cert_path = os.path.abspath("./empire/server/data/")
                 self.certificate = "%s/empire-chain.pem" % self.cert_path
                 self.private_key = "%s/empire-priv.key" % self.cert_path
 
@@ -146,8 +135,7 @@ class Plugin(Plugin):
         elif self.status == "stop":
             self.shutdown()
         else:
-            print(helpers.color("[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] ["
-                                "private key]"))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[!] Usage: socksserver <start|stop> [handler port] [proxy port] [certificate] [private key]")
 
     def start_socks_server(self):
         if not self.running:
@@ -155,17 +143,18 @@ class Plugin(Plugin):
             _thread.start_new_thread(self.server,
                                      (self.handler_port, self.proxy_port, self.certificate, self.private_key))
         else:
-            print(helpers.color("[!] Socks Proxy Server Already Running!"))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[!] Socks Proxy Server Already Running!")
 
     def shutdown(self):
         """if the plugin spawns a process provide a shutdown method for when Empire exits else leave it as pass"""
         if self.running:
             self.running = False
-            print(helpers.color("[*] Stopping socks proxy server..."))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[*] Stopping socks proxy server...")
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.handler_port)))
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.proxy_port)))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[+] Socks proxy server stopped")
         else:
-            print(helpers.color("[!] Server is not running!"))
+            MainMenu.send_socketio_message(self,f'plugin/{self.info[0]["Name"]}/notifications', "[!] Server is not running!")
 
     def handler_server(self, q, handler_port, certificate, private_key):
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
@@ -175,10 +164,8 @@ class Plugin(Plugin):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(('', int(handler_port)))
             dock_socket.listen(5)
-            print(helpers.color("[*] Handler listening on: " + handler_port))
-            print(helpers.color("[*] Using certificate: " + certificate))
-            print(helpers.color("[*] Using private key: " + private_key))
-            print(helpers.color("[+] Socks proxy server started"))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[+] Socks proxy server started")
+
             while self.running:
                 try:
                     clear_socket, address = dock_socket.accept()
@@ -197,7 +184,7 @@ class Plugin(Plugin):
                 except Exception as e:
                     pass
         except Exception as e:
-            pass
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[!] " + e.strerror)
         finally:
             dock_socket.close()
 
@@ -220,7 +207,8 @@ class Plugin(Plugin):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(('127.0.0.1', int(proxy_port)))
             dock_socket2.listen(5)
-            print(helpers.color("\n[*] Socks server listening on: " + proxy_port))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[*] Socks server listening on: " + proxy_port)
+
             while self.running:
                 try:
                     client_socket2, address = dock_socket2.accept()
@@ -230,12 +218,14 @@ class Plugin(Plugin):
                     _thread.start_new_thread(self.forward, (client_socket, client_socket2))
                     _thread.start_new_thread(self.forward, (client_socket2, client_socket))
                 except Exception as e:
-                    print(helpers.color("[!] Exception: %s" % e))
+                    MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications',
+                                                   "[!] Exception: %s" % e)
         except Exception as e:
-            print(helpers.color("[!] Exception: %s" % e))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications',
+                                           "[!] Exception: %s" % e)
         finally:
             dock_socket2.close()
-            print(helpers.color("\n[+] Socks proxy server stopped"))
+            MainMenu.send_socketio_message(self, f'plugin/{self.info[0]["Name"]}/notifications', "[+] Socks proxy server stopped")
 
     def forward(self, source, destination):
         try:
