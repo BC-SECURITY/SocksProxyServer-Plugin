@@ -140,8 +140,7 @@ class Plugin(Plugin):
         elif self.status == "stop":
             self.shutdown()
         else:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Usage: socksserver <start|stop> [handler port] "
-                                                                 "[proxy port] [certificate] [private key]")
+            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Usage: <start|stop>")
 
     def start_socks_server(self):
         if not self.running:
