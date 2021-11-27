@@ -68,21 +68,16 @@ class Plugin(Plugin):
         self.running = False
 
     def execute(self, command):
-        # This is for parsing commands through the api
+        """
+        Any modifications made to the main menu are done here
+        (meant to be overriden by child)
+        """
         try:
-            # essentially switches to parse the proper command to execute
-            self.options['status']['Value'] = command['status']
-            self.options['handlerport']['Value'] = command['handlerport']
-            self.options['proxyport']['Value'] = command['proxyport']
-            self.options['certificate']['Value'] = command['certificate']
-            self.options['privatekey']['Value'] = command['privatekey']
             results = self.do_socksproxyserver('')
             return results
-        except:
+        except Exception as e:
+            print(e)
             return False
-
-    def get_commands(self):
-        return self.commands
 
     def register(self, mainMenu):
         """

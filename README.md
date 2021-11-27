@@ -8,11 +8,11 @@ and runs in the background.
 
 ## Install
 Prerequisites:
-- Empire >= 4.0.0
+- Empire >= 4.3
 
-1. Add SocksServer.py to the plugins folder of Empire.
+1. Git clone the SocksProxyServer-Plugin repo into the plugins folder.
 
-![image](https://user-images.githubusercontent.com/20302208/120246969-b4098280-c226-11eb-9345-4ff994ee5312.png)
+![image](https://user-images.githubusercontent.com/20302208/143662960-29ff5cb4-ca62-408f-87f7-8e7c445504c7.png)
 
 ## Usage
 ### Client
