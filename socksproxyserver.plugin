@@ -19,7 +19,17 @@ class Plugin(Plugin):
         self.info = {
                         'Name': 'socksproxyserver',
 
-                        'Author': ['@Cx01N', '@mjokic'],
+                        'Authors': [
+                            {
+                                "Name": "Anthony Rose",
+                                "Handle": "@Cx01N",
+                                "Link": "https://twitter.com/Cx01N_",
+                            }, {
+                                "Name": "",
+                                "Handle": "@mjokic",
+                                "Link": ""
+                            }
+                        ],
 
                         'Description': ('Launches a Socks Proxy Server to run in the background of Empire.'),
 
@@ -28,7 +38,7 @@ class Plugin(Plugin):
                         'Techniques': [''],
 
                         'Comments': []
-                    },
+                    }
 
         self.options = {
                     'status': {
@@ -135,7 +145,7 @@ class Plugin(Plugin):
         elif self.status == "stop":
             self.shutdown()
         else:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Usage: <start|stop>")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Usage: <start|stop>")
 
     def start_socks_server(self):
         if not self.running:
@@ -143,7 +153,7 @@ class Plugin(Plugin):
             _thread.start_new_thread(self.server,
                                      (self.handler_port, self.proxy_port, self.certificate, self.private_key))
         else:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Socks Proxy Server Already Running!")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Socks Proxy Server Already Running!")
 
     def shutdown(self):
         """
@@ -151,12 +161,12 @@ class Plugin(Plugin):
         """
         if self.running:
             self.running = False
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[*] Stopping socks proxy server...")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[*] Stopping socks proxy server...")
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.handler_port)))
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("127.0.0.1", int(self.proxy_port)))
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Socks proxy server stopped")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Socks proxy server stopped")
         else:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Server is not running!")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Server is not running!")
 
     def handler_server(self, q, handler_port, certificate, private_key):
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
@@ -166,7 +176,7 @@ class Plugin(Plugin):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(('', int(handler_port)))
             dock_socket.listen(5)
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[+] Socks proxy server started")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[+] Socks proxy server started")
 
             while self.running:
                 try:
@@ -186,7 +196,7 @@ class Plugin(Plugin):
                 except Exception as e:
                     pass
         except Exception as e:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] " + e.strerror)
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] " + e.strerror)
         finally:
             dock_socket.close()
 
@@ -209,7 +219,7 @@ class Plugin(Plugin):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(('127.0.0.1', int(proxy_port)))
             dock_socket2.listen(5)
-            self.mainMenu.plugin_socketio_message(self.info[0]["Name"], "[*] Socks server listening on: " + proxy_port)
+            self.mainMenu.plugin_socketio_message(self.info["Name"], "[*] Socks server listening on: " + proxy_port)
 
             while self.running:
                 try:
@@ -220,12 +230,12 @@ class Plugin(Plugin):
                     _thread.start_new_thread(self.forward, (client_socket, client_socket2))
                     _thread.start_new_thread(self.forward, (client_socket2, client_socket))
                 except Exception as e:
-                    self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Exception: %s" % e)
+                    self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Exception: %s" % e)
         except Exception as e:
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Exception: %s" % e)
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Exception: %s" % e)
         finally:
             dock_socket2.close()
-            self.main_menu.plugin_socketio_message(self.info[0]["Name"], "[!] Socks proxy server stopped")
+            self.main_menu.plugin_socketio_message(self.info["Name"], "[!] Socks proxy server stopped")
 
     def forward(self, source, destination):
         try:
