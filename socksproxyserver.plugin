@@ -1,14 +1,14 @@
 from __future__ import print_function
 
-from empire.server.core.plugin_service import PluginService
-from empire.server.common.plugins import Plugin
-import empire.server.common.helpers as helpers
-
-import socket
 import _thread
-import ssl
-import queue
 import os
+import queue
+import socket
+import ssl
+
+import empire.server.common.helpers as helpers
+from empire.server.common.plugins import Plugin
+from empire.server.core.plugin_service import PluginService
 
 
 class Plugin(Plugin):
