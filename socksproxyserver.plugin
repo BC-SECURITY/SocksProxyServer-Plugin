@@ -12,10 +12,7 @@ from empire.server.core.plugin_service import PluginService
 
 
 class Plugin(Plugin):
-    description = "Launches a Socks Proxy Server to run in the background of Empire"
-
     def onLoad(self):
-        print(helpers.color("[*] Loading Empire Socks Proxy Server plugin"))
         self.main_menu = None
         self.info = {
                         'Name': 'socksproxyserver',
