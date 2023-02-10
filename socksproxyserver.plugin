@@ -143,7 +143,9 @@ class Plugin(Plugin):
             self.plugin_service.plugin_socketio_message(self.info["Name"], "[!] Server is not running!")
 
     def handler_server(self, q, handler_port, certificate, private_key):
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.set_ciphers('DEFAULT@SECLEVEL=0')
         context.load_cert_chain(certificate, private_key)
         try:
             dock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
