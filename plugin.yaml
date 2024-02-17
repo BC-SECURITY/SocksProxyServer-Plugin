@@ -1,0 +1,13 @@
+name: socksproxyserver
+authors:
+  - name: Anthony Rose
+    handle: '@Cx01N'
+    link: https://twitter.com/Cx01N_
+  - name:
+    handle: '@mjokic'
+    link:
+description: Launches a Socks Proxy Server to run in the background of Empire.
+software:
+techniques: []
+comments: []
+main: socksproxyserver.py
