@@ -1,4 +1,3 @@
-
 import _thread
 import os
 import queue
@@ -180,11 +179,11 @@ class Plugin(BasePlugin):
     def get_active_connection(self, q):
         try:
             client_socket = q.get(block=True, timeout=10)
-        except:
+        except Exception:
             return None
         try:
             client_socket.send(b"HELLO")
-        except:
+        except Exception:
             return self.get_active_connection(q)
         return client_socket
 
@@ -206,7 +205,7 @@ class Plugin(BasePlugin):
                 try:
                     client_socket2, address = dock_socket2.accept()
                     client_socket = self.get_active_connection(q)
-                    if client_socket == None:
+                    if client_socket is None:
                         client_socket2.close()
                     _thread.start_new_thread(
                         self.forward, (client_socket, client_socket2)
@@ -238,10 +237,10 @@ class Plugin(BasePlugin):
                 else:
                     source.shutdown(socket.SHUT_RD)
                     destination.shutdown(socket.SHUT_WR)
-        except:
+        except Exception:
             try:
                 source.shutdown(socket.SHUT_RD)
                 destination.shutdown(socket.SHUT_WR)
-            except:
+            except Exception:
                 pass
             pass
