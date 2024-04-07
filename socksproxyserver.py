@@ -9,7 +9,7 @@ from empire.server.core.plugin_service import PluginService
 
 
 class Plugin(BasePlugin):
-    def onLoad(self):
+    def on_load(self):
         self.main_menu = None
 
         self.options = {
