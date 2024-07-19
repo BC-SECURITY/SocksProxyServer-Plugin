@@ -3,15 +3,14 @@ import os
 import queue
 import socket
 import ssl
+from typing import override
 
-from empire.server.core.plugin_service import PluginService
 from empire.server.core.plugins import BasePlugin
 
 
 class Plugin(BasePlugin):
-    def on_load(self):
-        self.main_menu = None
-
+    @override
+    def on_load(self, db):
         self.options = {
             "status": {
                 "Description": "Start/stop the Socks Proxy server.",
@@ -44,12 +43,12 @@ class Plugin(BasePlugin):
 
         # load default empire certs
         self.cert_path = os.path.abspath("./empire/server/data/")
-        self.certificate = "%s/empire-chain.pem" % self.cert_path
-        self.private_key = "%s/empire-priv.key" % self.cert_path
+        self.certificate = f"{self.cert_path}/empire-chain.pem"
+        self.private_key = f"{self.cert_path}/empire-priv.key"
 
         self.running = False
 
-    def execute(self, command):
+    def execute(self, command, **kwargs):
         """
         Any modifications made to the main menu are done here
         (meant to be overriden by child)
@@ -60,15 +59,6 @@ class Plugin(BasePlugin):
         except Exception as e:
             print(e)
             return False
-
-    def register(self, main_menu):
-        """
-        any modifications to the main_menu go here - e.g.
-        registering functions to be run by user commands
-        """
-        main_menu.__class__.do_socksproxyserver = self.do_socksproxyserver
-        self.main_menu = main_menu
-        self.plugin_service: PluginService = main_menu.pluginsv2
 
     def do_socksproxyserver(self, command):
         """
@@ -81,8 +71,8 @@ class Plugin(BasePlugin):
         if not command["certificate"] or command["privatekey"]:
             # load default empire certs
             self.cert_path = os.path.abspath("./empire/server/data/")
-            self.certificate = "%s/empire-chain.pem" % self.cert_path
-            self.private_key = "%s/empire-priv.key" % self.cert_path
+            self.certificate = f"{self.cert_path}/empire-chain.pem"
+            self.private_key = f"{self.cert_path}/empire-priv.key"
         else:
             self.certificate = command["certificate"]
             self.private_key = command["privatekey"]
@@ -93,9 +83,7 @@ class Plugin(BasePlugin):
         elif self.status == "stop":
             self.shutdown()
         else:
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Usage: <start|stop>"
-            )
+            self.send_socketio_message("[!] Usage: <start|stop>")
 
     def start_socks_server(self):
         if not self.running:
@@ -110,9 +98,7 @@ class Plugin(BasePlugin):
                 ),
             )
         else:
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Socks Proxy Server Already Running!"
-            )
+            self.send_socketio_message("[!] Socks Proxy Server Already Running!")
 
     def shutdown(self):
         """
@@ -120,22 +106,16 @@ class Plugin(BasePlugin):
         """
         if self.running:
             self.running = False
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[*] Stopping socks proxy server..."
-            )
+            self.send_socketio_message("[*] Stopping socks proxy server...")
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
                 ("127.0.0.1", int(self.handler_port))
             )
             socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
                 ("127.0.0.1", int(self.proxy_port))
             )
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Socks proxy server stopped"
-            )
+            self.send_socketio_message("[!] Socks proxy server stopped")
         else:
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Server is not running!"
-            )
+            self.send_socketio_message("[!] Server is not running!")
 
     def handler_server(self, q, handler_port, certificate, private_key):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -147,9 +127,7 @@ class Plugin(BasePlugin):
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(("", int(handler_port)))
             dock_socket.listen(5)
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[+] Socks proxy server started"
-            )
+            self.send_socketio_message("[+] Socks proxy server started")
 
             while self.running:
                 try:
@@ -170,9 +148,7 @@ class Plugin(BasePlugin):
                 except Exception:
                     pass
         except Exception as e:
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] " + e.strerror
-            )
+            self.send_socketio_message("[!] " + e.strerror)
         finally:
             dock_socket.close()
 
@@ -197,9 +173,7 @@ class Plugin(BasePlugin):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(("127.0.0.1", int(proxy_port)))
             dock_socket2.listen(5)
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[*] Socks server listening on: " + proxy_port
-            )
+            self.send_socketio_message("[*] Socks server listening on: " + proxy_port)
 
             while self.running:
                 try:
@@ -214,18 +188,12 @@ class Plugin(BasePlugin):
                         self.forward, (client_socket2, client_socket)
                     )
                 except Exception as e:
-                    self.plugin_service.plugin_socketio_message(
-                        self.info["Name"], "[!] Exception: %s" % e
-                    )
+                    self.send_socketio_message(f"[!] Exception: {e}")
         except Exception as e:
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Exception: %s" % e
-            )
+            self.send_socketio_message(f"[!] Exception: {e}")
         finally:
             dock_socket2.close()
-            self.plugin_service.plugin_socketio_message(
-                self.info["Name"], "[!] Socks proxy server stopped"
-            )
+            self.send_socketio_message("[!] Socks proxy server stopped")
 
     def forward(self, source, destination):
         try:
