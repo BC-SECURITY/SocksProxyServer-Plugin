@@ -4,8 +4,8 @@ import queue
 import socket
 import ssl
 
-from empire.server.core.plugins import BasePlugin
 from empire.server.core.plugin_service import PluginService
+from empire.server.core.plugins import BasePlugin
 
 
 class Plugin(BasePlugin):
