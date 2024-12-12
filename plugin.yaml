@@ -6,8 +6,6 @@ authors:
   - name:
     handle: '@mjokic'
     link:
-description: Launches a Socks Proxy Server to run in the background of Empire.
 software:
 techniques: []
-comments: []
 main: socksproxyserver.py
