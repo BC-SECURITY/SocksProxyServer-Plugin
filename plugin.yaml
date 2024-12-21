@@ -9,3 +9,4 @@ authors:
 software:
 techniques: []
 main: socksproxyserver.py
+auto_start: false
