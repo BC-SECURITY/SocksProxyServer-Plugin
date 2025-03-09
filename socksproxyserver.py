@@ -1,10 +1,10 @@
 import _thread
-import os
 import queue
 import socket
 import ssl
 from typing import override
 
+from empire.server.core.config import config_manager
 from empire.server.core.plugins import BasePlugin
 
 
@@ -38,19 +38,21 @@ class Plugin(BasePlugin):
         }
 
         # load default empire certs
-        self.cert_path = os.path.abspath("./empire/server/data/")
+        self.cert_path = str(config_manager.DATA_DIR / "cert")
         self.certificate = f"{self.cert_path}/empire-chain.pem"
         self.private_key = f"{self.cert_path}/empire-priv.key"
         self.handler_port = self.settings_options["handlerport"]["Value"]
         self.proxy_port = self.settings_options["proxyport"]["Value"]
-    
+
     @override
     def on_start(self, db):
         settings = self.current_settings(db)
         self.handler_port = settings["handlerport"]
         self.proxy_port = settings["proxyport"]
-        self.certificate = settings["certificate"]
-        self.private_key = settings["privatekey"]
+        if settings["certificate"]:
+            self.certificate = settings["certificate"]
+        if settings["privatekey"]:
+            self.private_key = settings["privatekey"]
 
         _thread.start_new_thread(
             self.server,
