@@ -38,7 +38,7 @@ class Plugin(BasePlugin):
         }
 
         # load default empire certs
-        self.cert_path = config_manager.DATA_DIR / "cert"
+        self.cert_path = str(config_manager.DATA_DIR / "cert")
         self.certificate = f"{self.cert_path}/empire-chain.pem"
         self.private_key = f"{self.cert_path}/empire-priv.key"
         self.handler_port = self.settings_options["handlerport"]["Value"]
