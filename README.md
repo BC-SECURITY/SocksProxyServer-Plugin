@@ -3,20 +3,23 @@ The Socks Proxy Plugin runs a Socks Proxy Server for [Invoke-SocksProxy](https:/
 that supports Socks 4 and 5 protocols. This plugin is entirely contained in [Empire](https://github.com/BC-SECURITY/Empire/)
 and runs in the background. 
 
-## Getting Started
-* To run the plugin, you can download it fom the releases [Releases](https://github.com/BC-SECURITY/Invoke-SocksProxy/releases) page. 
+
 
 ## Install
 Prerequisites:
-- Empire >= 4.3
+- Empire >= 6.0
 
-1. Git clone the SocksProxyServer-Plugin repo into the plugins folder.
+1. Install from the Marketplace 
 
-![image](https://user-images.githubusercontent.com/20302208/143662960-29ff5cb4-ca62-408f-87f7-8e7c445504c7.png)
+![image](https://github.com/user-attachments/assets/0cc5ef26-4cac-4533-bebf-8f9ceb37220c)
+
 
 ## Usage
 ### Client
-![image](https://user-images.githubusercontent.com/20302208/120247213-8ffa7100-c227-11eb-8a7a-5f0de195f2e9.gif)
+1. Once installed from the Marketplace go to the settings tab of the plugin
+   ![image](https://github.com/user-attachments/assets/5235bfa4-6a20-4fe5-a42a-8cea4afa0633)
+
+2. The ports default to 443 for listening for an external connection and 1080 for use by proxychains 
 
 ## Future Features
 - Add multiple socks server support (similar to agents and listeners)
