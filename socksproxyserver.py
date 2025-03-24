@@ -131,7 +131,7 @@ class Plugin(BasePlugin):
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(("127.0.0.1", int(proxy_port)))
             dock_socket2.listen(5)
-            self.send_socketio_message("[*] Socks server listening on: " + proxy_port)
+            self.send_socketio_message("[*] Socks server listening on: " + str(proxy_port))
 
             while self.enabled:
                 try:
