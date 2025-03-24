@@ -1,0 +1,12 @@
+name: SocksProxyServer Plugin
+authors:
+  - name: Anthony Rose
+    handle: '@Cx01N'
+    link: https://twitter.com/Cx01N_
+  - name:
+    handle: '@mjokic'
+    link:
+software:
+techniques: []
+main: socksproxyserver.py
+auto_start: false
