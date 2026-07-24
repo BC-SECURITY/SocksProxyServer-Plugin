@@ -1,4 +1,5 @@
 import _thread
+import contextlib
 import queue
 import socket
 import ssl
@@ -12,6 +13,11 @@ class Plugin(BasePlugin):
     @override
     def on_load(self, db):
         self.execution_enabled = False
+        # Own run flag rather than self.enabled, so the accept loops don't
+        # depend on when the plugin service flips it around the lifecycle hooks.
+        self.running = False
+        self.handler_socket = None
+        self.proxy_socket = None
         self.settings_options = {
             "handlerport": {
                 "Description": "Port number.",
@@ -54,6 +60,7 @@ class Plugin(BasePlugin):
         if settings["privatekey"]:
             self.private_key = settings["privatekey"]
 
+        self.running = True
         _thread.start_new_thread(
             self.server,
             (
@@ -64,30 +71,44 @@ class Plugin(BasePlugin):
             ),
         )
 
+    @override
     def on_stop(self, db):
         """
-        if the plugin spawns a process provide a shutdown method for when Empire exits else leave it as pass
+        Close the listening sockets, which is what breaks the accept() loops out
+        of their blocking wait.
+
+        Empire calls on_stop for every loaded plugin at shutdown, started or
+        not, so both handles may still be None here. The old implementation
+        instead dialed its own ports to wake the loops, which raised
+        ConnectionRefusedError whenever the server wasn't up.
         """
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
-            ("127.0.0.1", int(self.handler_port))
-        )
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
-            ("127.0.0.1", int(self.proxy_port))
-        )
+        # Cleared first so a loop woken by the close sees the stop and doesn't
+        # spin on an accept() that now fails immediately.
+        self.running = False
+
+        for sock in (self.proxy_socket, self.handler_socket):
+            if sock is not None:
+                with contextlib.suppress(OSError):
+                    sock.close()
+
+        self.proxy_socket = None
+        self.handler_socket = None
 
     def handler_server(self, q, handler_port, certificate, private_key):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1
         context.set_ciphers("DEFAULT@SECLEVEL=0")
         context.load_cert_chain(certificate, private_key)
+        # Created outside the try so the finally below always has it bound.
+        dock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            dock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(("", int(handler_port)))
             dock_socket.listen(5)
+            self.handler_socket = dock_socket
             self.send_socketio_message("[+] Socks proxy server started")
 
-            while self.enabled:
+            while self.running:
                 try:
                     clear_socket, address = dock_socket.accept()
                     client_socket = context.wrap_socket(clear_socket, server_side=True)
@@ -106,39 +127,47 @@ class Plugin(BasePlugin):
                 except Exception:
                     pass
         except Exception as e:
-            self.send_socketio_message("[!] " + e.strerror)
+            self.send_socketio_message(f"[!] {e}")
         finally:
             dock_socket.close()
 
     def get_active_connection(self, q):
-        try:
-            client_socket = q.get(block=True, timeout=10)
-        except Exception:
-            return None
-        try:
-            client_socket.send(b"HELLO")
-        except Exception:
-            return self.get_active_connection(q)
-        return client_socket
+        # Discard dead connections iteratively. Recursing here meant a backlog
+        # of stale sockets could exhaust the stack instead of draining.
+        while True:
+            try:
+                client_socket = q.get(block=True, timeout=10)
+            except queue.Empty:
+                return None
+
+            try:
+                client_socket.send(b"HELLO")
+            except Exception:
+                continue
+
+            return client_socket
 
     def server(self, handler_port, proxy_port, certificate, private_key):
         q = queue.Queue()
         _thread.start_new_thread(
             self.handler_server, (q, handler_port, certificate, private_key)
         )
+        # Created outside the try so the finally below always has it bound.
+        dock_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            dock_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             dock_socket2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket2.bind(("127.0.0.1", int(proxy_port)))
             dock_socket2.listen(5)
+            self.proxy_socket = dock_socket2
             self.send_socketio_message("[*] Socks server listening on: " + str(proxy_port))
 
-            while self.enabled:
+            while self.running:
                 try:
                     client_socket2, address = dock_socket2.accept()
                     client_socket = self.get_active_connection(q)
                     if client_socket is None:
                         client_socket2.close()
+                        continue
                     _thread.start_new_thread(
                         self.forward, (client_socket, client_socket2)
                     )
