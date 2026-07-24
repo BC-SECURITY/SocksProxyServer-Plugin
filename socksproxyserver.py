@@ -1,12 +1,15 @@
-import _thread
 import contextlib
+import logging
 import queue
 import socket
 import ssl
+import threading
 from typing import override
 
 from empire.server.core.config import config_manager
 from empire.server.core.plugins import BasePlugin
+
+log = logging.getLogger(__name__)
 
 
 class Plugin(BasePlugin):
@@ -18,6 +21,8 @@ class Plugin(BasePlugin):
         self.running = False
         self.handler_socket = None
         self.proxy_socket = None
+        self.server_thread = None
+        self.handler_thread = None
         self.settings_options = {
             "handlerport": {
                 "Description": "Port number.",
@@ -61,47 +66,77 @@ class Plugin(BasePlugin):
             self.private_key = settings["privatekey"]
 
         self.running = True
-        _thread.start_new_thread(
-            self.server,
-            (
+        self.server_thread = threading.Thread(
+            target=self.server,
+            args=(
                 self.handler_port,
                 self.proxy_port,
                 self.certificate,
                 self.private_key,
             ),
+            daemon=True,
         )
+        self.server_thread.start()
 
     @override
     def on_stop(self, db):
         """
-        Close the listening sockets, which is what breaks the accept() loops out
-        of their blocking wait.
+        Shut down and close the listening sockets, which is what breaks the
+        accept() loops out of their blocking wait, then wait for the threads.
 
         Empire calls on_stop for every loaded plugin at shutdown, started or
-        not, so both handles may still be None here. The old implementation
+        not, so the handles may still be None here. The old implementation
         instead dialed its own ports to wake the loops, which raised
         ConnectionRefusedError whenever the server wasn't up.
         """
-        # Cleared first so a loop woken by the close sees the stop and doesn't
-        # spin on an accept() that now fails immediately.
+        # Cleared first so a woken loop sees the stop and exits instead of
+        # spinning on an accept() that now fails immediately.
         self.running = False
 
         for sock in (self.proxy_socket, self.handler_socket):
-            if sock is not None:
-                with contextlib.suppress(OSError):
-                    sock.close()
+            if sock is None:
+                continue
+            # shutdown() and close() are suppressed separately on purpose.
+            # On Linux, close() alone does NOT wake a thread blocked in
+            # accept() -- it stays blocked forever and the port stays bound,
+            # so a restart fails with EADDRINUSE. shutdown() is what wakes it.
+            # On macOS the reverse: shutdown() on a listening socket raises
+            # ENOTCONN, but close() does wake accept(). Sharing one suppress
+            # block would skip close() on macOS and break that platform.
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+            with contextlib.suppress(OSError):
+                sock.close()
 
         self.proxy_socket = None
         self.handler_socket = None
 
+        # Join before returning so the loops can't still be between their
+        # accept() wake and their `while self.running` check when a following
+        # on_start sets the flag back to True -- that race leaves an orphaned
+        # thread spinning on a closed socket.
+        for thread in (self.server_thread, self.handler_thread):
+            if thread is None:
+                continue
+            thread.join(timeout=5)
+            if thread.is_alive():
+                log.warning("Socks proxy thread did not exit within 5s")
+
+        self.server_thread = None
+        self.handler_thread = None
+
     def handler_server(self, q, handler_port, certificate, private_key):
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = ssl.TLSVersion.TLSv1
-        context.set_ciphers("DEFAULT@SECLEVEL=0")
-        context.load_cert_chain(certificate, private_key)
         # Created outside the try so the finally below always has it bound.
         dock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1
+            context.set_ciphers("DEFAULT@SECLEVEL=0")
+            # Inside the try: the cert/key paths are operator-editable
+            # settings, so a bad path is routine. Raised out here it would
+            # reach no log at all, leaving the plugin marked enabled but dead.
+            context.load_cert_chain(certificate, private_key)
+
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             dock_socket.bind(("", int(handler_port)))
             dock_socket.listen(5)
@@ -116,42 +151,75 @@ class Plugin(BasePlugin):
                         data = b""
                         while data.count(b"\n") < 3:
                             data_recv = client_socket.recv()
+                            # A peer that completes the TLS handshake and then
+                            # closes cleanly makes recv() return b'' forever
+                            # with no exception, so without this the loop spins
+                            # at millions of iterations/sec and wedges the
+                            # accept loop it runs in -- reachable by anyone who
+                            # can reach this port.
+                            if not data_recv:
+                                break
                             data += data_recv
                         client_socket.send(
                             b"HTTP/1.1 200 OK\nContent-Length: 999999\nContent-Type: text/plain\nConnection: Keep-Alive\nKeep-Alive: timeout=20, max=10000\n\n"
                         )
                         q.get(False)
-                    except Exception:
+                    except queue.Empty:
                         pass
+                    except Exception:
+                        log.warning("Socks handler connection failed", exc_info=True)
                     q.put(client_socket)
                 except Exception:
-                    pass
+                    if not self.running:
+                        break
+                    log.warning("Socks handler accept failed", exc_info=True)
         except Exception as e:
+            log.error("Socks handler server stopped", exc_info=True)
             self.send_socketio_message(f"[!] {e}")
         finally:
-            dock_socket.close()
+            with contextlib.suppress(OSError):
+                dock_socket.close()
 
     def get_active_connection(self, q):
         # Discard dead connections iteratively. Recursing here meant a backlog
         # of stale sockets could exhaust the stack instead of draining.
+        discarded = 0
         while True:
             try:
                 client_socket = q.get(block=True, timeout=10)
             except queue.Empty:
+                if discarded:
+                    log.warning(
+                        "Discarded %d dead agent connection(s) with none left to use",
+                        discarded,
+                    )
                 return None
 
             try:
                 client_socket.send(b"HELLO")
             except Exception:
+                # Close it rather than leaving it to refcounting, so the fd
+                # goes back immediately instead of at the next GC.
+                with contextlib.suppress(Exception):
+                    client_socket.close()
+                discarded += 1
                 continue
 
+            if discarded:
+                log.warning(
+                    "Discarded %d dead agent connection(s) before finding a live one",
+                    discarded,
+                )
             return client_socket
 
     def server(self, handler_port, proxy_port, certificate, private_key):
         q = queue.Queue()
-        _thread.start_new_thread(
-            self.handler_server, (q, handler_port, certificate, private_key)
+        self.handler_thread = threading.Thread(
+            target=self.handler_server,
+            args=(q, handler_port, certificate, private_key),
+            daemon=True,
         )
+        self.handler_thread.start()
         # Created outside the try so the finally below always has it bound.
         dock_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -159,7 +227,9 @@ class Plugin(BasePlugin):
             dock_socket2.bind(("127.0.0.1", int(proxy_port)))
             dock_socket2.listen(5)
             self.proxy_socket = dock_socket2
-            self.send_socketio_message("[*] Socks server listening on: " + str(proxy_port))
+            self.send_socketio_message(
+                "[*] Socks server listening on: " + str(proxy_port)
+            )
 
             while self.running:
                 try:
@@ -168,18 +238,28 @@ class Plugin(BasePlugin):
                     if client_socket is None:
                         client_socket2.close()
                         continue
-                    _thread.start_new_thread(
-                        self.forward, (client_socket, client_socket2)
-                    )
-                    _thread.start_new_thread(
-                        self.forward, (client_socket2, client_socket)
-                    )
+                    for pair in (
+                        (client_socket, client_socket2),
+                        (client_socket2, client_socket),
+                    ):
+                        threading.Thread(
+                            target=self.forward, args=pair, daemon=True
+                        ).start()
                 except Exception as e:
+                    # A stopping plugin wakes accept() by design, so don't
+                    # report that as an error -- and break rather than loop,
+                    # or the next accept() on a closed socket spins hot and
+                    # floods this same channel.
+                    if not self.running:
+                        break
+                    log.warning("Socks proxy accept failed", exc_info=True)
                     self.send_socketio_message(f"[!] Exception: {e}")
         except Exception as e:
+            log.error("Socks proxy server stopped", exc_info=True)
             self.send_socketio_message(f"[!] Exception: {e}")
         finally:
-            dock_socket2.close()
+            with contextlib.suppress(OSError):
+                dock_socket2.close()
             self.send_socketio_message("[!] Socks proxy server stopped")
 
     def forward(self, source, destination):
@@ -193,9 +273,6 @@ class Plugin(BasePlugin):
                     source.shutdown(socket.SHUT_RD)
                     destination.shutdown(socket.SHUT_WR)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 source.shutdown(socket.SHUT_RD)
                 destination.shutdown(socket.SHUT_WR)
-            except Exception:
-                pass
-            pass
