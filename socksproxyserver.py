@@ -111,12 +111,16 @@ class Plugin(BasePlugin):
         self.proxy_socket = None
         self.handler_socket = None
 
-        # Join before returning so the loops can't still be between their
-        # accept() wake and their `while self.running` check when a following
-        # on_start sets the flag back to True -- that race leaves an orphaned
-        # thread spinning on a closed socket.
+        # Best effort: this join is bounded, so a thread can outlive it. What
+        # actually stops a straggler resuming when a following on_start sets
+        # self.running back to True is the thread-identity check in the accept
+        # loops, since the handles are cleared below.
         for thread in (self.server_thread, self.handler_thread):
-            if thread is None:
+            # ident is None for a thread that was constructed but never
+            # started. Joining that raises RuntimeError, which would escape
+            # on_stop into Empire's teardown loop -- the failure this plugin
+            # was changed to stop causing.
+            if thread is None or thread.ident is None:
                 continue
             thread.join(timeout=5)
             if thread.is_alive():
@@ -133,8 +137,11 @@ class Plugin(BasePlugin):
             context.minimum_version = ssl.TLSVersion.TLSv1
             context.set_ciphers("DEFAULT@SECLEVEL=0")
             # Inside the try: the cert/key paths are operator-editable
-            # settings, so a bad path is routine. Raised out here it would
-            # reach no log at all, leaving the plugin marked enabled but dead.
+            # settings, so a bad path is routine. Escaping this thread it
+            # would only reach threading.excepthook -- a console traceback
+            # that never lands in empire_server.log and never reaches the
+            # operator. Note the plugin still ends up marked enabled with a
+            # dead handler either way; this only buys the diagnostic.
             context.load_cert_chain(certificate, private_key)
 
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -143,7 +150,13 @@ class Plugin(BasePlugin):
             self.handler_socket = dock_socket
             self.send_socketio_message("[+] Socks proxy server started")
 
-            while self.running:
+            # The identity check is what stops a straggler resuming: the join
+            # in on_stop is bounded, so a thread can outlive it, and
+            # self.running alone is per-instance -- a following on_start sets
+            # it back to True and the old thread would carry on looping over a
+            # socket that was already closed. on_stop nulls the handle, so a
+            # thread that is no longer the current one exits here instead.
+            while self.running and threading.current_thread() is self.handler_thread:
                 try:
                     clear_socket, address = dock_socket.accept()
                     client_socket = context.wrap_socket(clear_socket, server_side=True)
@@ -166,13 +179,18 @@ class Plugin(BasePlugin):
                         q.get(False)
                     except queue.Empty:
                         pass
-                    except Exception:
-                        log.warning("Socks handler connection failed", exc_info=True)
+                    except Exception as e:
+                        log.debug("Socks handler request failed: %s", e)
                     q.put(client_socket)
-                except Exception:
+                except Exception as e:
                     if not self.running:
                         break
-                    log.warning("Socks handler accept failed", exc_info=True)
+                    # No traceback, and debug rather than warning: this also
+                    # catches wrap_socket, so it fires for every failed TLS
+                    # handshake on an internet-facing port. At warning with
+                    # exc_info a passing scanner wrote a full stack per
+                    # unauthenticated probe into a non-rotating log file.
+                    log.debug("Socks handler connection failed: %s", e)
         except Exception as e:
             log.error("Socks handler server stopped", exc_info=True)
             self.send_socketio_message(f"[!] {e}")
@@ -198,8 +216,10 @@ class Plugin(BasePlugin):
             try:
                 client_socket.send(b"HELLO")
             except Exception:
-                # Close it rather than leaving it to refcounting, so the fd
-                # goes back immediately instead of at the next GC.
+                # Close it here rather than letting the socket object's
+                # deallocation do it, so the fd is released where we decide
+                # the peer is dead instead of one loop iteration later, when
+                # the local is rebound.
                 with contextlib.suppress(Exception):
                     client_socket.close()
                 discarded += 1
@@ -231,7 +251,8 @@ class Plugin(BasePlugin):
                 "[*] Socks server listening on: " + str(proxy_port)
             )
 
-            while self.running:
+            # Identity check for the same reason as the handler loop above.
+            while self.running and threading.current_thread() is self.server_thread:
                 try:
                     client_socket2, address = dock_socket2.accept()
                     client_socket = self.get_active_connection(q)
@@ -273,6 +294,12 @@ class Plugin(BasePlugin):
                     source.shutdown(socket.SHUT_RD)
                     destination.shutdown(socket.SHUT_WR)
         except Exception:
+            # Suppressed separately, for the same reason the listener teardown
+            # in on_stop is: source.shutdown() raises ENOTCONN whenever the
+            # peer has already reset, and sharing one block would then skip
+            # the destination's FIN entirely -- leaving the paired relay
+            # thread parked in recv() forever, holding both sockets open.
             with contextlib.suppress(Exception):
                 source.shutdown(socket.SHUT_RD)
+            with contextlib.suppress(Exception):
                 destination.shutdown(socket.SHUT_WR)
