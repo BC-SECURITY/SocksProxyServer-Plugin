@@ -65,17 +65,26 @@ class Plugin(BasePlugin):
         if settings["privatekey"]:
             self.private_key = settings["privatekey"]
 
+        q = queue.Queue()
         self.running = True
-        self.server_thread = threading.Thread(
-            target=self.server,
-            args=(
-                self.handler_port,
-                self.proxy_port,
-                self.certificate,
-                self.private_key,
-            ),
+        # Both handles are assigned before either thread starts. The accept
+        # loops compare against them and on_stop joins them, so assigning
+        # handler_thread from inside the server thread left a window where an
+        # on_stop that landed first saw None, skipped the join, and returned
+        # before the handler had even bound its port.
+        self.handler_thread = threading.Thread(
+            target=self.handler_server,
+            args=(q, self.handler_port, self.certificate, self.private_key),
+            name="socks-handler",
             daemon=True,
         )
+        self.server_thread = threading.Thread(
+            target=self.server,
+            args=(q, self.proxy_port),
+            name="socks-proxy",
+            daemon=True,
+        )
+        self.handler_thread.start()
         self.server_thread.start()
 
     @override
@@ -124,7 +133,7 @@ class Plugin(BasePlugin):
                 continue
             thread.join(timeout=5)
             if thread.is_alive():
-                log.warning("Socks proxy thread did not exit within 5s")
+                log.warning("Socks thread %s did not exit within 5s", thread.name)
 
         self.server_thread = None
         self.handler_thread = None
@@ -164,23 +173,38 @@ class Plugin(BasePlugin):
                         data = b""
                         while data.count(b"\n") < 3:
                             data_recv = client_socket.recv()
-                            # A peer that completes the TLS handshake and then
-                            # closes cleanly makes recv() return b'' forever
-                            # with no exception, so without this the loop spins
-                            # at millions of iterations/sec and wedges the
-                            # accept loop it runs in -- reachable by anyone who
-                            # can reach this port.
                             if not data_recv:
-                                break
+                                # A peer that completes the TLS handshake and
+                                # then closes cleanly makes recv() return b''
+                                # forever with no exception.
+                                raise ConnectionResetError(
+                                    "peer closed before sending a request"
+                                )
                             data += data_recv
                         client_socket.send(
                             b"HTTP/1.1 200 OK\nContent-Length: 999999\nContent-Type: text/plain\nConnection: Keep-Alive\nKeep-Alive: timeout=20, max=10000\n\n"
                         )
-                        q.get(False)
+                    except Exception as e:
+                        # Don't park a connection whose request never
+                        # completed. It is not usable by the proxy, and parking
+                        # it would evict the live agent connection below -- so
+                        # any peer that connects and hangs up could keep the
+                        # queue stocked with dead sockets.
+                        log.debug("Socks handler request failed: %s", e)
+                        with contextlib.suppress(OSError):
+                            client_socket.close()
+                        continue
+
+                    # One connection is parked at a time; this one replaces the
+                    # previous. Close what we evict rather than waiting for the
+                    # dropped reference to be collected.
+                    try:
+                        stale = q.get(False)
                     except queue.Empty:
                         pass
-                    except Exception as e:
-                        log.debug("Socks handler request failed: %s", e)
+                    else:
+                        with contextlib.suppress(OSError):
+                            stale.close()
                     q.put(client_socket)
                 except Exception as e:
                     if not self.running:
@@ -232,14 +256,7 @@ class Plugin(BasePlugin):
                 )
             return client_socket
 
-    def server(self, handler_port, proxy_port, certificate, private_key):
-        q = queue.Queue()
-        self.handler_thread = threading.Thread(
-            target=self.handler_server,
-            args=(q, handler_port, certificate, private_key),
-            daemon=True,
-        )
-        self.handler_thread.start()
+    def server(self, q, proxy_port):
         # Created outside the try so the finally below always has it bound.
         dock_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
