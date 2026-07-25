@@ -67,11 +67,8 @@ class Plugin(BasePlugin):
 
         q = queue.Queue()
         self.running = True
-        # Both handles are assigned before either thread starts. The accept
-        # loops compare against them and on_stop joins them, so assigning
-        # handler_thread from inside the server thread left a window where an
-        # on_stop that landed first saw None, skipped the join, and returned
-        # before the handler had even bound its port.
+        # Both handles exist before either thread starts: on_stop joins them
+        # and the accept loops compare against them.
         self.handler_thread = threading.Thread(
             target=self.handler_server,
             args=(q, self.handler_port, self.certificate, self.private_key),
@@ -94,24 +91,19 @@ class Plugin(BasePlugin):
         accept() loops out of their blocking wait, then wait for the threads.
 
         Empire calls on_stop for every loaded plugin at shutdown, started or
-        not, so the handles may still be None here. The old implementation
-        instead dialed its own ports to wake the loops, which raised
-        ConnectionRefusedError whenever the server wasn't up.
+        not, so the handles may still be None here.
         """
-        # Cleared first so a woken loop sees the stop and exits instead of
-        # spinning on an accept() that now fails immediately.
+        # Before the sockets close, so a woken loop sees the stop and exits
+        # instead of spinning on an accept() that now fails immediately.
         self.running = False
 
         for sock in (self.proxy_socket, self.handler_socket):
             if sock is None:
                 continue
-            # shutdown() and close() are suppressed separately on purpose.
-            # On Linux, close() alone does NOT wake a thread blocked in
-            # accept() -- it stays blocked forever and the port stays bound,
-            # so a restart fails with EADDRINUSE. shutdown() is what wakes it.
-            # On macOS the reverse: shutdown() on a listening socket raises
-            # ENOTCONN, but close() does wake accept(). Sharing one suppress
-            # block would skip close() on macOS and break that platform.
+            # Suppressed separately on purpose. Linux needs the shutdown() --
+            # close() alone leaves accept() blocked and the port bound -- while
+            # on macOS shutdown() raises ENOTCONN on a listening socket. One
+            # shared suppress block would skip close() on macOS.
             with contextlib.suppress(OSError):
                 sock.shutdown(socket.SHUT_RDWR)
             with contextlib.suppress(OSError):
@@ -120,15 +112,9 @@ class Plugin(BasePlugin):
         self.proxy_socket = None
         self.handler_socket = None
 
-        # Best effort: this join is bounded, so a thread can outlive it. What
-        # actually stops a straggler resuming when a following on_start sets
-        # self.running back to True is the thread-identity check in the accept
-        # loops, since the handles are cleared below.
         for thread in (self.server_thread, self.handler_thread):
-            # ident is None for a thread that was constructed but never
-            # started. Joining that raises RuntimeError, which would escape
-            # on_stop into Empire's teardown loop -- the failure this plugin
-            # was changed to stop causing.
+            # join() raises RuntimeError on a thread that was constructed but
+            # never started, and that would escape into Empire's teardown loop.
             if thread is None or thread.ident is None:
                 continue
             thread.join(timeout=5)
@@ -145,12 +131,9 @@ class Plugin(BasePlugin):
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.minimum_version = ssl.TLSVersion.TLSv1
             context.set_ciphers("DEFAULT@SECLEVEL=0")
-            # Inside the try: the cert/key paths are operator-editable
-            # settings, so a bad path is routine. Escaping this thread it
-            # would only reach threading.excepthook -- a console traceback
-            # that never lands in empire_server.log and never reaches the
-            # operator. Note the plugin still ends up marked enabled with a
-            # dead handler either way; this only buys the diagnostic.
+            # Inside the try: these paths are operator-editable settings, so a
+            # bad one is routine, and escaping this thread it would only reach
+            # threading.excepthook and never land in empire_server.log.
             context.load_cert_chain(certificate, private_key)
 
             dock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -159,12 +142,10 @@ class Plugin(BasePlugin):
             self.handler_socket = dock_socket
             self.send_socketio_message("[+] Socks proxy server started")
 
-            # The identity check is what stops a straggler resuming: the join
-            # in on_stop is bounded, so a thread can outlive it, and
-            # self.running alone is per-instance -- a following on_start sets
-            # it back to True and the old thread would carry on looping over a
-            # socket that was already closed. on_stop nulls the handle, so a
-            # thread that is no longer the current one exits here instead.
+            # self.running alone is not enough: on_stop's join is bounded, so a
+            # straggler can outlive it and a following on_start sets the flag
+            # back to True. on_stop nulls the handle, so the identity check is
+            # what makes the old thread exit.
             while self.running and threading.current_thread() is self.handler_thread:
                 try:
                     clear_socket, address = dock_socket.accept()
@@ -174,9 +155,8 @@ class Plugin(BasePlugin):
                         while data.count(b"\n") < 3:
                             data_recv = client_socket.recv()
                             if not data_recv:
-                                # A peer that completes the TLS handshake and
-                                # then closes cleanly makes recv() return b''
-                                # forever with no exception.
+                                # A peer that handshakes then closes cleanly
+                                # makes recv() return b'' forever, no exception.
                                 raise ConnectionResetError(
                                     "peer closed before sending a request"
                                 )
@@ -185,19 +165,15 @@ class Plugin(BasePlugin):
                             b"HTTP/1.1 200 OK\nContent-Length: 999999\nContent-Type: text/plain\nConnection: Keep-Alive\nKeep-Alive: timeout=20, max=10000\n\n"
                         )
                     except Exception as e:
-                        # Don't park a connection whose request never
-                        # completed. It is not usable by the proxy, and parking
-                        # it would evict the live agent connection below -- so
-                        # any peer that connects and hangs up could keep the
-                        # queue stocked with dead sockets.
+                        # Never park a failed request: it would evict the live
+                        # agent connection below, so anyone who can reach this
+                        # port could fill the queue with dead sockets.
                         log.debug("Socks handler request failed: %s", e)
                         with contextlib.suppress(OSError):
                             client_socket.close()
                         continue
 
-                    # One connection is parked at a time; this one replaces the
-                    # previous. Close what we evict rather than waiting for the
-                    # dropped reference to be collected.
+                    # One connection is parked at a time; this replaces it.
                     try:
                         stale = q.get(False)
                     except queue.Empty:
@@ -209,10 +185,8 @@ class Plugin(BasePlugin):
                 except Exception as e:
                     if not self.running:
                         break
-                    # No traceback, and debug rather than warning: this also
-                    # catches wrap_socket, so it fires for every failed TLS
-                    # handshake on an internet-facing port. At warning with
-                    # exc_info a passing scanner wrote a full stack per
+                    # Debug and no traceback: this also catches wrap_socket, so
+                    # a passing scanner would otherwise write a full stack per
                     # unauthenticated probe into a non-rotating log file.
                     log.debug("Socks handler connection failed: %s", e)
         except Exception as e:
@@ -240,10 +214,8 @@ class Plugin(BasePlugin):
             try:
                 client_socket.send(b"HELLO")
             except Exception:
-                # Close it here rather than letting the socket object's
-                # deallocation do it, so the fd is released where we decide
-                # the peer is dead instead of one loop iteration later, when
-                # the local is rebound.
+                # Release the fd here rather than leaving it to the dropped
+                # reference being collected.
                 with contextlib.suppress(Exception):
                     client_socket.close()
                 discarded += 1
